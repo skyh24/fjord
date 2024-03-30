@@ -1,1 +1,9 @@
-{ "dependencies": { "viem": "^2.7.20" } }
+{
+  "scripts": {
+    "start": "bun run ./index.ts"
+  },
+  "dependencies": {
+    "bun": "^1.0.36",
+    "viem": "^2.7.20"
+  }
+}

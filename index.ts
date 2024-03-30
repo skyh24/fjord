@@ -28,6 +28,7 @@ const headers = {
 const base = 'https://www.oklink.com/api/v5/explorer/address/transaction-list?';
 const ADDRESS = process.env.ADDRESS;
 const SYMBOL = process.env.SYMBOL;
+const PAIR = process.env.WETHUSDT_V2
 
 // OKlink 获取交易
 async function fetchAddressTxs(address: string, page: string){
@@ -117,7 +118,34 @@ async function contractUnit(address: string){
   shareDecimals = shareDec.result as number
 }
 
-// contractUnit(ADDRESS);
+// await contractUnit(ADDRESS);
+
+const pairABI = parseAbi([
+  'function getReserves() returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)'
+])
+
+const assetSymbol = process.env.ASSET
+let assetPrice = 3500.0
+const wethDecimals = 18
+const usdtDecimals = 6
+
+async function reservePrice(address: string, blockNumber: bigint){
+  const reserves = await ethClient.readContract({
+    address,
+    abi: pairABI,
+    functionName: 'getReserves',
+    blockNumber,
+  })
+  // console.log(reserves);
+  const reserve0 = formatUnits(reserves[0], wethDecimals)
+  const reserve1 = formatUnits(reserves[1], usdtDecimals)
+  const price = parseFloat(reserve1) / parseFloat(reserve0)
+  console.log(reserve0, reserve1, price);
+  return price;
+}
+
+// await pairReserve(PAIR, 19545373n);
+
 
 // 写入文件
 async function writeTxArgs(hashes : string[]){
@@ -170,20 +198,26 @@ async function writeTxArgs(hashes : string[]){
     const assets = formatUnits(decoded.args.assets, assetDecimals);
     const shares = formatUnits(decoded.args.shares, shareDecimals);
     const swapFee = formatUnits(decoded.args.swapFee, assetDecimals);
+    
+    if (assetSymbol == 'WETH') {
+      assetPrice = await reservePrice(PAIR, blockNumber);
+    }
+    const assetValue = parseFloat(assets) * assetPrice;
+    const sharePrice = assetValue / parseFloat(shares);
 
-    console.log(hash, blockNumber, eventName, assets, shares, swapFee);
-    appendFileSync(SYMBOL + ".txt", hash + '\t' + blockNumber + '\t' + caller + '\t' + 
-    eventName + '\t' + assets + '\t\t' + shares + '\t\t' + swapFee + '\n', "utf8");
+    console.log(hash, blockNumber, eventName, assets, assetValue, shares, sharePrice, swapFee);
+    appendFileSync(SYMBOL + ".csv", hash + '\t' + blockNumber + '\t' + caller + '\t' + 
+    eventName + '\t' + assets + '\t' + assetValue + '\t' + shares + '\t' + sharePrice + '\t' + swapFee + '\n', "utf8");
   }  
 }
 
 // 断点续传
 const hasTxs: string[] = [];
 async function reloadTxs() {
-  const file = Bun.file(SYMBOL + ".txt")
+  const file = Bun.file(SYMBOL + ".csv")
   const text = await file.text();
   const lines = text.split('\n');
-  console.log(SYMBOL + ".txt" + lines.length);
+  console.log(SYMBOL + ".csv" + lines.length);
   
   for (const line of lines){ 
     if (line == '') continue;   
@@ -204,6 +238,8 @@ async function main(){
 
     const hashes = txHashes //.slice(0, 3); /// 3
     // console.log(hashes);
+    appendFileSync(SYMBOL + ".txt", 'hash' + '\t' + 'blockNumber' + '\t' + 'caller' + '\t' + 
+    'eventName' + '\t' + 'assets' + '\t' + 'assetValue' + '\t' + 'shares' + '\t' + 'sharePrice' + '\t' + 'swapFee' + '\n', "utf8");
     await writeTxArgs(hashes);
   }
 }
@@ -214,7 +250,7 @@ main();
 /// 3. 批量获取交易
 /// 4. 断点续传
 /// 5. 读取合约信息
-/// 6. 读取OKlink交易
+/// 6. 读取 OKlink 交易
 
 
 
